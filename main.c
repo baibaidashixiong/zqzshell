@@ -283,10 +283,11 @@ char *zqzsh_read_line(void)
         exit(EXIT_FAILURE);
     }
 
+
     while (1)
     {
         c = getchar();
-
+        //printf("i am readline process PID=%d\n", getpid());
         if (c == EOF || c == '\n')
         {
             buffer[i] = '\0';
@@ -381,7 +382,6 @@ int zqzsh_pipe(char **args)
         if (strcmp(args[pipe_pos], builtin_str[3]) == 0)
             break;
     }
-
     if (args[pipe_pos] == NULL)
     {
         fprintf(stderr, "zqzsh: pipe缺少参数 \n"); // 管道命令' | '后续没有指令，参数缺失
@@ -406,8 +406,7 @@ int zqzsh_pipe(char **args)
     { // 子进程执行单个命令
         close(fd[0]);
         dup2(fd[1], STDOUT_FILENO); // 将标准输出重定向到fds[1]
-        close(fd[1]);
-        char *simple_line[]={0};
+        char **simple_line=malloc(sizeof(char *)*pipe_pos);
         for (int i = 0; i < pipe_pos; i++)
         {
             simple_line[i] = args[i];
@@ -418,18 +417,19 @@ int zqzsh_pipe(char **args)
         {
             result = 1;
         }
-        // free(simple_line);
+        
+        close(fd[1]);//疑惑：为什么在此位置和在函数前都可以
+        free(simple_line);
         exit(result);
     }
     else
     { // 父进程递归执行后续命令
         int status;
         waitpid(pid, &status, 0);
-
         close(fd[1]);
-        dup2(fd[0], STDIN_FILENO); // 将标准输入重定向到fds[0]
+        dup2(fd[0], STDIN_FILENO); // 将标准输入重定向到写入端fds[0]
         close(fd[0]);
-        char *simple_line[input_list_len-pipe_pos];
+        char **simple_line=malloc(sizeof(char*)*(input_list_len-pipe_pos));
         int q=0;
         for (int i = pipe_pos+1; i < input_list_len; i++)
         {
@@ -438,7 +438,8 @@ int zqzsh_pipe(char **args)
         }
         simple_line[q]=NULL;
         result = execute(simple_line);
-        // free(simple_line);
+        close(fd[0]);//疑惑同上
+        free(simple_line);
     }
     return result;
 }
@@ -507,7 +508,7 @@ void prompt()
     char shell[1000];
     if (getcwd(cwd, sizeof(cwd)) != NULL)
     {
-        strcpy(shell, "zqzsh : [");
+        strcpy(shell, "22140443 zqz sh : [");
         strcat(shell, cwd);
         strcat(shell, " ] $ ");
 
@@ -568,6 +569,8 @@ void zqzsh_loop(void)
 
     do
     {
+        int s_fd_out = dup(STDOUT_FILENO);
+        int s_fd_in = dup(STDIN_FILENO);
         prompt();
         line = zqzsh_read_line();
         args = zqzsh_split_line(line);
@@ -575,6 +578,8 @@ void zqzsh_loop(void)
         status = zqzsh_execute(args);
         free(line);
         free(args);
+        int n_fd_out = dup2(s_fd_out , STDOUT_FILENO);
+        int n_fd_in = dup2(s_fd_in,STDIN_FILENO);
     } while (status);
 }
 
